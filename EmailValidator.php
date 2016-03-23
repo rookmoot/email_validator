@@ -91,12 +91,11 @@ class EmailValidator {
 	      preg_match('/^([0-9]{3}) /ims', $reply, $matches);
 	      $code = isset($matches[1]) ? $matches[1] : '';
 
-	      echo 'REPLY FOR '.$email.' : '.$code."\n";
-	      
 	      if ($code == '250') {
 		// you received 250 so the email address was accepted
 		$results[$email] = self::VALID_YES;
 	      } elseif ($code == '451' || $code == '452') {
+		// greylisted / assuming maybe
 		$results[$email] = self::VALID_MAYBE;
 	      } else {
 		$results[$email] = self::VALID_NO;
