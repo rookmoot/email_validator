@@ -3,12 +3,15 @@
     "type": "library",
     "description": "A PHP Mail Validation Class through SMTP.",
     "keywords": ["scraper", "mail", "smtp", "validator"],
-    "homepage": "",
+    "homepage": "http://www.diatelys.fr",
     "license": "BSD",
     "authors": [
         {
             "name": "Stéphane Bauland",
             "email": "stephane.bauland@diatelys.fr"
         }
-    ]
+    ],
+    "autoload": {
+        "psr-4": {"EmailValidator\\": "src/"}
+    }
 }

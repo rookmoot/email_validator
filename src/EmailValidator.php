@@ -1,5 +1,7 @@
 <?php
 
+namespace EmailValidator;
+
 class EmailValidator {
 
   const VALID_NO = 0;
