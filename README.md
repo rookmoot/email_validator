@@ -1,4 +1,4 @@
-# PHP EmailValidator
+B1;3801;0c# PHP EmailValidator
 
 The class retrieves MX records for the email domain and then connects to the
 domain's SMTP server to try figuring out if the address really exists.
@@ -12,6 +12,10 @@ domain's SMTP server to try figuring out if the address really exists.
 * MX query support on Windows without requiring any PEAR packages
 * Logging and debugging support
 
+### Installation
+```php
+composer require rookmoot/email_validator
+```
 
 ### Basic example
 ```php
