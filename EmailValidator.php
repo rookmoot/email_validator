@@ -9,8 +9,9 @@ class EmailValidator {
   private $_from    = '';
   private $_emails  = array();
   private $_options = array();
-
   private $_domains = array();
+
+  private $_fp = NULL;
 
   static public function validate($from, array $emails, array $options=array()) {
     $validator = new EmailValidator($from, $emails, $options);
@@ -20,7 +21,7 @@ class EmailValidator {
     return FALSE;
   }
 
-  private function __construct($from, $emails, $options=array()) {
+  private function __construct($from, array $emails, array $options=array()) {
     $this->_from = $from;
     $this->_emails = $emails;
     $this->_options = stream_context_create($this->_options);
@@ -57,6 +58,62 @@ class EmailValidator {
     return TRUE;
   }
 
+  private function connect($host) {
+    $this->_fp = @stream_socket_client(
+      'tcp://'.$host.':25', $errno, $errstr, 20,
+      STREAM_CLIENT_CONNECT, $this->_options
+    );
+
+    if (!$this->connected()) {
+      throw new Exception('Failed to connect to '.$host);
+    }
+
+    $result = stream_set_timeout($this->_fp, 60);
+    if (!$result) {
+      throw new Exception('Failed to set timeout to '.$host);
+    }
+    stream_set_blocking($this->_fp, TRUE);
+    return TRUE;
+  }
+
+  private function connected() {
+    return is_resource($this->_fp);
+  }
+
+  private function send($message) {
+    if (!$this->connected()) {
+      throw new Exception('Can\'t send on not connected host');
+    }
+    
+    $result = fwrite($this->_fp, $message."\r\n");
+    if ($result === false) {
+      throw new Exception('Failed to write to socket for message : '.$message);
+    }
+    
+    $text = $line = $this->recv();
+    while (preg_match("/^[0-9]+-/", $line) || !strncmp($line, '220', 3)) {
+      $line = $this->recv();
+      $text .= $line;
+    }
+
+    sscanf($line, '%d%s', $code, $text);
+
+    $reply = new stdclass;
+    $reply->code = $code;
+    $reply->text = $text;
+
+    return $reply;
+  }
+
+  private function recv() {
+    if (!$this->connected()) {
+      throw new Exception('Can\'t send on not connected host');
+    }
+    stream_set_timeout($this->_fp, 50);
+    return fgets($this->_fp, 1024);
+  }
+
+
   private function check() {
     $results = array();
     
@@ -69,45 +126,39 @@ class EmailValidator {
       // check if we have MXs.
       if (isset($domain['mx']) && count($domain['mx'])) {
 	foreach ($domain['mx'] as $mxrecord => $weight) {
-	  $fp = @stream_socket_client(
-            'tcp://'.$mxrecord.':25', $errno, $errstr, 20,
-	    STREAM_CLIENT_CONNECT, $this->_options
-          );
 
-	  if ($fp !== FALSE) {
-	    // we first connect, then send credentials.
-	    fgets($fp, 1024)."\n";
-	    fwrite($fp, "HELO helo\r\n");
-	    fgets($fp, 1024)."\n";
-	    fwrite($fp, "MAIL FROM: <".$this->_from.">\r\n");
-	    fgets($fp, 1024)."\n";
+	  try {
+	    if ($this->connect($mxrecord)) {
+	      // TODO replace foo.com with fromemail domain.
+	      $this->send('EHLO foo.com');
+	      $this->send('NOOP');
+	      foreach ($domain['emails'] as $email => $status) {
+		$this->send('MAIL FROM: <'.$this->_from.'>');
+		$reply = $this->send('RCPT TO: <'.$email.'>');
+		if ($reply && is_object($reply)) {
 
-	    // then, we ask for mail from this domains
-	    foreach ($domain['emails'] as $email => $status) {
-	      fwrite($fp, "RCPT TO: <".$email.">\r\n");
-	      $reply = fgets($fp, 1024)."\n";
+		  // you received 250 so the email address was accepted
+		  if ($reply->code == '250') {
+		    $results[$email] = self::VALID_YES;
 
-	      // check response code
-	      preg_match('/^([0-9]{3}) /ims', $reply, $matches);
-	      $code = isset($matches[1]) ? $matches[1] : '';
-
-	      if ($code == '250') {
-		// you received 250 so the email address was accepted
-		$results[$email] = self::VALID_YES;
-	      } elseif ($code == '451' || $code == '452') {
-		// greylisted / assuming maybe
-		$results[$email] = self::VALID_MAYBE;
-	      } else {
-		$results[$email] = self::VALID_NO;
+		  // greylisted / assuming maybe
+		  } elseif ($reply->code == '451' || $reply->code == '452') {
+		    $results[$email] = self::VALID_MAYBE;
+		    
+		  // else, this is not a valid email.
+		  } else {
+		    $results[$email] = self::VALID_NO;
+		  }
+		}
+		$this->send('RSET');
 	      }
+	      $this->send('QUIT');
+	      break;
 	    }
-	    fclose($fp);
-	    break;
-	  }
+	  } catch (Exception $e) { }
 	}
       }
     }
     return $results;
   }
 }
-
