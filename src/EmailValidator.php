@@ -112,12 +112,7 @@ class EmailValidator {
     }
 
     sscanf($line, '%d%s', $code, $text);
-
-    $reply = new stdclass;
-    $reply->code = $code;
-    $reply->text = $text;
-
-    return $reply;
+    return $code ? $code : '500';
   }
 
   private function recv() {
@@ -151,14 +146,13 @@ class EmailValidator {
 	      foreach ($domain['emails'] as $email => $status) {
 		$this->send('MAIL FROM: <'.$this->_from.'>');
 		$reply = $this->send('RCPT TO: <'.$email.'>');
-		if ($reply && is_object($reply)) {
-
+		if ($reply) {
 		  // you received 250 so the email address was accepted
-		  if ($reply->code == '250') {
+		  if ($reply == '250') {
 		    $results[$email] = self::VALID_YES;
 
 		  // greylisted / assuming maybe
-		  } elseif ($reply->code == '451' || $reply->code == '452') {
+		  } elseif ($reply == '451' || $reply == '452') {
 		    $results[$email] = self::VALID_MAYBE;
 		    
 		  // else, this is not a valid email.
