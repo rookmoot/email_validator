@@ -14,6 +14,7 @@ class EmailValidator {
   private $_domains = array();
 
   private $_fp = NULL;
+  private $_delay = 2; // delay in second before each call.
 
   static public function validate($from, array $emails, array $options=array()) {
     $validator = new EmailValidator($from, $emails, $options);
@@ -78,14 +79,26 @@ class EmailValidator {
     return TRUE;
   }
 
+  private function disconnect() {
+    if (!$this->connected()) {
+      return;
+    }
+
+    $this->send('QUIT');
+    sleep(2);
+    fclose($this->_fp);
+  }
+
   private function connected() {
-    return is_resource($this->_fp);
+    return ($this->_fp && is_resource($this->_fp));
   }
 
   private function send($message) {
     if (!$this->connected()) {
       throw new Exception('Can\'t send on not connected host');
     }
+
+    sleep($this->_delay);
     
     $result = fwrite($this->_fp, $message."\r\n");
     if ($result === false) {
@@ -111,6 +124,7 @@ class EmailValidator {
     if (!$this->connected()) {
       throw new Exception('Can\'t send on not connected host');
     }
+
     stream_set_timeout($this->_fp, 50);
     return fgets($this->_fp, 1024);
   }
@@ -154,7 +168,7 @@ class EmailValidator {
 		}
 		$this->send('RSET');
 	      }
-	      $this->send('QUIT');
+	      $this->disconnect();
 	      break;
 	    }
 	  } catch (Exception $e) { }
