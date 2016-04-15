@@ -27,7 +27,10 @@ class EmailValidator {
   private function __construct($from, array $emails, array $options=array()) {
     $this->_from = $from;
     $this->_emails = $emails;
-    $this->_options = stream_context_create($this->_options);
+    $this->_delay = isset($options['delay']) ? $options['delay'] : $this->_delay;
+    $this->_options = stream_context_create(
+      isset($this->_options['context']) ? $this->_options['context'] : array()
+    );
   }
 
   private function parse() {
