@@ -107,7 +107,7 @@ class EmailValidator {
     if ($result === false) {
       throw new Exception('Failed to write to socket for message : '.$message);
     }
-    
+
     $text = $line = $this->recv();
     while (preg_match("/^[0-9]+-/", $line) || !strncmp($line, '220', 3)) {
       $line = $this->recv();
@@ -144,7 +144,7 @@ class EmailValidator {
 	  try {
 	    if ($this->connect($mxrecord)) {
 	      // TODO replace foo.com with fromemail domain.
-	      $this->send('EHLO foo.com');
+	      $this->send('EHLO '.explode('@', $this->_from)[1]);
 	      $this->send('NOOP');
 	      foreach ($domain['emails'] as $email => $status) {
 		$this->send('MAIL FROM: <'.$this->_from.'>');
