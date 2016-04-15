@@ -100,7 +100,7 @@ class EmailValidator {
 
     sleep($this->_delay);
     
-    $result = fwrite($this->_fp, $message."\r\n");
+    $result = @fwrite($this->_fp, $message."\r\n");
     if ($result === false) {
       throw new Exception('Failed to write to socket for message : '.$message);
     }
@@ -121,7 +121,7 @@ class EmailValidator {
     }
 
     stream_set_timeout($this->_fp, 50);
-    return fgets($this->_fp, 1024);
+    return @fgets($this->_fp, 1024);
   }
 
 
