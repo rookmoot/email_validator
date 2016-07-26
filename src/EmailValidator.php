@@ -15,6 +15,63 @@ class EmailValidator {
 
   private $_fp = NULL;
   private $_delay = 2; // delay in second before each call.
+  private $_debug = FALSE;
+
+  static public function search($firstname, $lastname, $tld, array $options=array()) {
+    $return = FALSE;
+
+    $patterns = [
+      '{first}.{last}@{tld}',
+      '{first}{last}@{tld}',
+      '{last}.{first}@{tld}',
+      '{last}{first}@{tld}',
+      '{first}_{last}@{tld}',
+      '{f}{last}@{tld}',
+      '{f}.{last}@{tld}',
+      '{f}{l}@{tld}',
+      '{last}{f}@{tld}',
+    ];
+
+    $firstname = str_replace(['-', '_', ' '], ['', '', ''], $firstname);
+    $lastname = str_replace(['-', '_', ' '], ['', '', ''], $lastname);
+
+    $tokens = ['{first}', '{last}', '{f}', '{l}', '{tld}'];
+    $replacements = [$firstname, $lastname, substr($firstname, 0, 1), substr($lastname, 0, 1), self::extractDomainName($tld)];
+    
+    $emails = [];
+    foreach ($patterns as $pattern) {
+      $emails[] = str_replace($tokens, $replacements, $pattern);
+    }
+
+    $ret = self::validate('michel@orange.fr', $emails, $options);
+    foreach ($ret as $email => $value) {
+      if ($value) {
+	$return = $email;
+	break;
+      }
+    }
+
+    if (!$return) {
+      $patterns = [
+        'contact@{tld}',
+        'contacts@{tld}',
+	'infos@{tld}',
+      ];
+
+      $emails = [];
+      foreach ($patterns as $pattern) {
+	$emails[] = str_replace($tokens, $replacements, $pattern);
+      }
+      $ret = self::validate('michel@orange.fr', $emails, $options);
+      foreach ($ret as $email => $value) {
+	if ($value) {
+	  $return = $email;
+	  break;
+	}
+      }
+    }
+    return $return;
+  }
 
   static public function validate($from, array $emails, array $options=array()) {
     $validator = new EmailValidator($from, $emails, $options);
@@ -24,13 +81,27 @@ class EmailValidator {
     return FALSE;
   }
 
+  static protected function extractDomainName($tld) {
+    if (preg_match("/[a-z0-9\-]{1,63}\.[a-z\.]{2,6}$/", parse_url($tld, PHP_URL_HOST), $_domain_tld)) {
+      return $_domain_tld[0];
+    }
+    return str_replace(['www.'], [''], $tld);
+  }
+
   private function __construct($from, array $emails, array $options=array()) {
     $this->_from = $from;
     $this->_emails = $emails;
     $this->_delay = isset($options['delay']) ? $options['delay'] : $this->_delay;
+    $this->_debug = isset($options['debug']) ? $options['debug'] : $this->_debug;
     $this->_options = stream_context_create(
       isset($this->_options['context']) ? $this->_options['context'] : array()
     );
+  }
+
+  private function debug($string) {
+    if (isset($this->_debug) && $this->_debug == TRUE) {
+      echo $string."\n";
+    }
   }
 
   private function parse() {
@@ -71,12 +142,12 @@ class EmailValidator {
     );
 
     if (!$this->connected()) {
-      throw new Exception('Failed to connect to '.$host);
+      throw new \Exception('Failed to connect to '.$host);
     }
 
     $result = stream_set_timeout($this->_fp, 60);
     if (!$result) {
-      throw new Exception('Failed to set timeout to '.$host);
+      throw new \Exception('Failed to set timeout to '.$host);
     }
     stream_set_blocking($this->_fp, TRUE);
     return TRUE;
@@ -98,17 +169,20 @@ class EmailValidator {
 
   private function send($message) {
     if (!$this->connected()) {
-      throw new Exception('Can\'t send on not connected host');
+      throw new \Exception('Can\'t send on not connected host');
     }
+
+    $this->debug(">> ".$message);
 
     sleep($this->_delay);
     
     $result = @fwrite($this->_fp, $message."\r\n");
     if ($result === false) {
-      throw new Exception('Failed to write to socket for message : '.$message);
+      throw new \Exception('Failed to write to socket for message : '.$message);
     }
 
     $text = $line = $this->recv();
+    $this->debug("<< ".$line);
     while (preg_match("/^[0-9]+-/", $line) || !strncmp($line, '220', 3)) {
       $line = $this->recv();
       $text .= $line;
@@ -120,7 +194,7 @@ class EmailValidator {
 
   private function recv() {
     if (!$this->connected()) {
-      throw new Exception('Can\'t send on not connected host');
+      throw new \Exception('Can\'t send on not connected host');
     }
 
     stream_set_timeout($this->_fp, 50);
@@ -137,11 +211,13 @@ class EmailValidator {
 	$results[$email] = $status;
       }
 
+      print_r($domain);
+
       // check if we have MXs.
       if (isset($domain['mx']) && count($domain['mx'])) {
 	foreach ($domain['mx'] as $mxrecord => $weight) {
-
 	  try {
+	    $this->debug('CON : '.print_r($mxrecord, true));
 	    if ($this->connect($mxrecord)) {
 	      // TODO replace foo.com with fromemail domain.
 	      $this->send('EHLO '.explode('@', $this->_from)[1]);
@@ -168,7 +244,7 @@ class EmailValidator {
 	      $this->disconnect();
 	      break;
 	    }
-	  } catch (Exception $e) { }
+	  } catch (\Exception $e) { $this->debug('ERR : '.$e->getMessage()); }
 	}
       }
     }
